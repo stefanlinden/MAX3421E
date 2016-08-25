@@ -22,13 +22,31 @@ uint_fast8_t _getCommandByteAckstat(uint_fast8_t, uint_fast8_t, uint_fast8_t);
 
 /* PUBLIC FUNCTIONS */
 
-void MAX_start() {
+void MAX_start(uint_fast8_t startAsMaster) {
+    /* Start SPI */
     SIMSPI_startSPI();
+
+    /* Set the SPI configuration to 4-wire */
+    MAX_writeRegister(17, 0x18);
+
+    /* Make sure everything is reset (note: this does NOT reset the SPI config) */
+    MAX_reset();
+
+    if(startAsMaster) {
+        /* Enable HOST, SOFKAENAB, DMPULLDN and DPPULLDN */
+        MAX_enableOptions(27, BIT0 | BIT3 | BIT6 | BIT7);
+    }
 }
 
 void MAX_reset() {
-    MAX_enableOptions(15, BIT5);
-    DELAY_WITH_TIMEOUT(1);
+    /* Enable the reset */
+    MAX_writeRegister(15, BIT5);
+
+    /* Immediately Stop the reset */
+    MAX_writeRegister(15, 0);
+
+    /* Wait a short while */
+    DELAY_WITH_TIMEOUT(!(MAX_readRegister(13) & BIT0));
 }
 
 uint_fast8_t MAX_writeRegister(uint_fast8_t address, uint_fast8_t value) {

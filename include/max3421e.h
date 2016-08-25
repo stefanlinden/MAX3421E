@@ -23,9 +23,12 @@
 /* PROTOTYPES */
 
 /**
- * Start the module
+ * Start the module and initialise
+ *
+ * Parameters:
+ * uint_fast8_t startAsMaster: set to true if the module should be initialised as a USB master
  */
-void MAX_start();
+void MAX_start(uint_fast8_t);
 
 /**
  * Reset the module by enabling CHIPRES

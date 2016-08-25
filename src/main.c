@@ -14,20 +14,14 @@ void main( void ) {
 
     WDTCTL = WDTPW | WDTHOLD;           // Stop watchdog timer
 
-    MAX_start( );
-    MAX_writeRegister(17, 0x18);
-    MAX_reset();
+    MAX_start(1);
 
-    uint_fast8_t regval = MAX_readRegister(17);
-    printf("Value of register 17: 0x%x\n", regval);
+    uint_fast8_t regval = MAX_readRegister(13);
+    printf("Value of register 13: 0x%x\n", regval);
 
     regval = MAX_readRegister(27);
-    printf("Value of register 27 before edit: 0x%x\n", regval);
+    printf("Value of register 27: 0x%x\n", regval);
 
-    MAX_enableOptions(27, BIT0 | BIT6 | BIT7);
-
-    regval = MAX_readRegister(27);
-    printf("Value of register 27 after edit: 0x%x\n", regval);
 
     while ( 1 ) {
         MAP_PCM_gotoLPM0InterruptSafe( );
