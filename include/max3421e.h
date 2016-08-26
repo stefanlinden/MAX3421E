@@ -28,6 +28,27 @@
 #define MAX_IRQ_FRAME       BIT6
 #define MAX_IRQ_HXFRDN      BIT7
 
+#define MAX_IRQ_OSCOK       BIT0
+/* MAX_IRQ_RWU */
+#define MAX_IRQ_BUSACT      BIT2
+#define MAX_IRQ_URES        BIT3
+#define MAX_IRQ_SUSP        BIT4
+#define MAX_IRQ_NOVBUS      BIT5
+#define MAX_IRQ_VBUS        BIT6
+#define MAX_IRQ_URESDN      BIT7
+
+/* the End Point interrupts (EPIRQ) */
+#define MAX_IRQ_IN0BAV      BIT0
+#define MAX_IRQ_OUT0DAV     BIT1
+#define MAX_IRQ_OUT1DAV     BIT2
+#define MAX_IRQ_IN2BAV      BIT3
+#define MAX_IRQ_IN3BAV      BIT4
+#define MAX_IRQ_SUDAV       BIT5
+
+
+#define MODE_PERIPH         0
+#define MODE_HOST           1
+
 /* Change this GPIO pin to change the interrupt pin */
 #define USBINT_PORT GPIO_PORT_P2
 #define USBINT_PIN  GPIO_PIN3
@@ -60,6 +81,30 @@ void MAX_reset( void );
 uint_fast8_t MAX_writeRegister(uint_fast8_t, uint_fast8_t);
 
 /**
+ * Write to the specified register
+ *
+ * Parameters:
+ * uint_fast8_t address: register address to write to
+ * uint_fast8_t * values: an array of values to write to the specified register
+ * uint_fast8_t length: the length of the 'values' array
+ *
+ * Returns:
+ * uint_fast8_t: the byte read concurrently on MISO while writing the last byte on MOSI
+ */
+uint_fast8_t MAX_multiWriteRegister(uint_fast8_t, uint_fast8_t *, uint_fast8_t);
+
+/**
+ * Read multiple bytes from a register
+ *
+ * Parameters:
+ * uint_fast8_t address: register address to read from
+ * uint_fast8_t * buffer: an array of values to store the result in
+ * uint_fast8_t length: the number of bytes to read
+ *
+ */
+void MAX_multiReadRegister(uint_fast8_t, uint_fast8_t *, uint_fast8_t);
+
+/**
  * Read from the specified register
  *
  * Parameters:
@@ -89,6 +134,14 @@ void MAX_enableOptions(uint_fast8_t, uint_fast8_t);
 void MAX_disableOptions(uint_fast8_t, uint_fast8_t);
 
 /**
+ * Send a Set_Address Control packet
+ *
+ * Parameters:
+ * uint_fast8_t peraddress: the new peripheral address
+ */
+void MAX_setNewPeripheralAddress(uint_fast8_t);
+
+/**
  * Enable interrupts
  *
  * Parameters:
@@ -105,12 +158,36 @@ void MAX_enableInterrupts(uint_fast8_t);
 void MAX_disableInterrupts(uint_fast8_t);
 
 /**
+ * Enable EP interrupts
+ *
+ * Parameters:
+ * uint_fast8_t flags: the EP interrupts to enable
+ */
+void MAX_enableEPInterrupts(uint_fast8_t);
+
+/**
+ * Disable EP interrupts
+ *
+ * Parameters:
+ * uint_fast8_t flags: the EP interrupts to disable
+ */
+void MAX_disableEPInterrupts(uint_fast8_t);
+
+/**
  * Clear the interrupt statuses
  *
  * Parameters:
  * uint_fast8_t flags: the interrupts to clear
  */
 void MAX_clearInterruptStatus(uint_fast8_t);
+
+/**
+ * Clear the EP interrupt statuses
+ *
+ * Parameters:
+ * uint_fast8_t flags: the EP interrupts to clear
+ */
+void MAX_clearEPInterruptStatus(uint_fast8_t);
 
 /**
  * Enable the interrupt pin
@@ -137,5 +214,21 @@ uint_fast8_t MAX_getInterruptStatus( void );
  * uint_fast8_t: a byte containing the status of the enabled interrupts
  */
 uint_fast8_t MAX_getEnabledInterruptStatus( void );
+
+/**
+ * Get the status of the EP interrupts
+ *
+ * Returns:
+ * uint_fast8_t: a byte containing the status of the EP interrupts
+ */
+uint_fast8_t MAX_getEPInterruptStatus( void );
+
+/**
+ * Get the status of enabled EP interrupts
+ *
+ * Returns:
+ * uint_fast8_t: a byte containing the status of the enabled EP interrupts
+ */
+uint_fast8_t MAX_getEnabledEPInterruptStatus( void );
 
 #endif /* INCLUDE_MAX3421E_H_ */

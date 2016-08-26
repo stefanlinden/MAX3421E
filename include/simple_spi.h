@@ -15,7 +15,7 @@
 #define SPI_PORT GPIO_PORT_P1
 #define SPI_PIN GPIO_PIN5 | GPIO_PIN6 | GPIO_PIN7
 
-#define SPI_TIMEOUT         500
+#define SPI_TIMEOUT         2400000
 
 /*** MACROs ***/
 
