@@ -51,7 +51,7 @@ void MAX_start( uint_fast8_t startAsMaster ) {
     MAP_Interrupt_enableInterrupt(INT_PORT2);
 
     /* Enabling MASTER interrupts */
-    MAP_Interrupt_enableMaster();
+    MAP_Interrupt_enableMaster( );
 
     if ( startAsMaster ) {
         /* We're starting as a USB host/master */
@@ -222,7 +222,8 @@ uint_fast8_t MAX_readRegister( uint_fast8_t address ) {
     return result;
 }
 
-void MAX_multiReadRegister(uint_fast8_t address, uint_fast8_t * buffer, uint_fast8_t length) {
+void MAX_multiReadRegister( uint_fast8_t address, uint_fast8_t * buffer,
+        uint_fast8_t length ) {
 
     /* Start the transaction by pulling the CS low */
     SET_CS_LOW
@@ -261,23 +262,21 @@ void MAX_disableOptions( uint_fast8_t address, uint_fast8_t flags ) {
 }
 
 void MAX_setNewPeripheralAddress( uint_fast8_t peraddress ) {
-    ControlPacket addrPacket = {
-            0, /* perAddress */
-            0x10, /* type */
-            0, /* endPoint */
-            0, /*bmRequestType*/
-            0x05, /* bRequest */
-            peraddress, /* wValue */
-            0, /* wIndex */
-            0 /* wLength */
+    ControlPacket addrPacket = { 0, /* perAddress */
+    0x10, /* type */
+    0, /* endPoint */
+    0, /*bmRequestType*/
+    0x05, /* bRequest */
+    peraddress, /* wValue */
+    0, /* wIndex */
+    0 /* wLength */
     };
     _sendControlPacket(&addrPacket);
 }
 
 /* PRIVATE FUNCTIONS */
 
-uint_fast8_t _getCommandByte( uint_fast8_t address,
-        uint_fast8_t direction ) {
+uint_fast8_t _getCommandByte( uint_fast8_t address, uint_fast8_t direction ) {
     uint_fast8_t result = 0;
     result |= address << 3;
     result |= direction << 1;
@@ -290,36 +289,45 @@ void _sendControlPacket( ControlPacket * packet ) {
     /* Load the contents from the given packet and send this as a Control packet */
     TXData[0] = packet->bmRequestType;
     TXData[1] = packet->bRequest;
-    TXData[2] = (uint_fast8_t) (packet->wValue >> 8);
-    TXData[3] = (uint_fast8_t) (packet->wValue);
-    TXData[4] = (uint_fast8_t) (packet->wIndex >> 8);
-    TXData[5] = (uint_fast8_t) (packet->wIndex);
-    TXData[6] = (uint_fast8_t) (packet->wLength >> 8);
-    TXData[7] = (uint_fast8_t) (packet->wLength);
+    TXData[2] = (uint_fast8_t) (packet->wValue);
+    TXData[3] = (uint_fast8_t) (packet->wValue >> 8);
+    TXData[4] = (uint_fast8_t) (packet->wIndex);
+    TXData[5] = (uint_fast8_t) (packet->wIndex >> 8);
+    TXData[6] = (uint_fast8_t) (packet->wLength);
+    TXData[7] = (uint_fast8_t) (packet->wLength >> 8);
 
     /* Write the data into the DUPFIFO */
     MAX_multiWriteRegister(4, (uint_fast8_t *) TXData, 8);
 
     /* Instruct the module to send the data as the specified type */
-    MAX_writeRegister(30, packet->type + packet->endPoint);
+    MAX_writeRegister(30, packet->type | packet->endPoint);
+
+    printf("Writing to 31: 0x%x.\n", packet->type | packet->endPoint);
 
     uint_fast8_t regval;
-    //regval = MAX_readRegister(31);
-    //printf("Value of register 31 (1): 0x%x\n", regval & 0x0F);
+    regval = MAX_readRegister(31);
+    printf("Value of register 31 (1): 0x%x\n", regval & 0x0F);
 
-    while(MAX_readRegister(31) & 0x0F);
-
-    uint_fast8_t xferresult = 0;
-    while(xferresult) {
-    MAX_writeRegister(30, 0x80);
-    xferresult = MAX_readRegister(31) & 0x0F;
-    }
+    uint8_t timeout = 0xFF;
+    while ( MAX_readRegister(31) & 0x0F || timeout )
+        timeout--;
 
     regval = MAX_readRegister(31);
     printf("Value of register 31 (2): 0x%x\n", regval & 0x0F);
 
-    MAX_writeRegister(28, 0x01);
+    if(!regval) {
+        printf("Error or timeout: 0x%x.\n", regval);
+        return;
+    }
+
     MAX_writeRegister(30, 0x80);
+
+    timeout = 0xFF;
+    while ( MAX_readRegister(31) & 0x0F || timeout )
+    timeout--;
+
+    //MAX_writeRegister(28, 0x01);
+    //MAX_writeRegister(30, 0x80);
 
     regval = MAX_readRegister(31);
     printf("Value of register 31 (3): 0x%x\n", regval & 0x0F);
@@ -336,12 +344,12 @@ void GPIOP2_ISR( void ) {
     if ( status & GPIO_PIN3 ) {
         /* Get the IQR status */
         USBStatus = MAX_getEnabledInterruptStatus( );
-        if(!mode)
-            USBEPStatus = MAX_getEnabledEPInterruptStatus();
+        if ( !mode )
+            USBEPStatus = MAX_getEnabledEPInterruptStatus( );
         else
             USBEPStatus = 0;
 
-        if( USBStatus & MAX_IRQ_HXFRDN) {
+        if ( USBStatus & MAX_IRQ_HXFRDN ) {
             /* Indicates host transfer done */
             lastTransferResult = MAX_readRegister(31) & 0x0F;
             printf("Transfer result: 0x%x\n", lastTransferResult);
@@ -358,7 +366,8 @@ void GPIOP2_ISR( void ) {
                 MAX_enableOptions(27, BIT3);
 
                 int i;
-                for(i = 0; i<100000; i++);
+                for ( i = 0; i < 100000; i++ )
+                    ;
 
                 MAX_setNewPeripheralAddress(1);
             } else {
@@ -371,11 +380,14 @@ void GPIOP2_ISR( void ) {
             }
         }
 
-        if(USBEPStatus & MAX_IRQ_SUDAV) {
+        if ( USBEPStatus & MAX_IRQ_SUDAV ) {
 
             MAX_multiReadRegister(4, (uint_fast8_t *) RXData, 8);
             ACKSTAT = true;
-            MAX_readRegister(18);
+            MAX_readRegister(19);
+
+            int i;
+            for(i = 0; i < 50000; i++);
 
             regval = MAX_readRegister(19);
             printf("Value of register 19: 0x%x\n", regval);
@@ -383,7 +395,7 @@ void GPIOP2_ISR( void ) {
     }
     /* Clear the interrupts */
     MAX_clearInterruptStatus(USBStatus);
-    if(!mode)
+    if ( !mode )
         MAX_clearEPInterruptStatus(USBEPStatus);
 
     MAP_GPIO_clearInterruptFlag(USBINT_PORT, USBINT_PIN);

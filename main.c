@@ -10,7 +10,7 @@
 
 #include "max3421e.h"
 
-#define ISMASTER
+//#define ISMASTER
 
 void main( void ) {
 
@@ -34,10 +34,13 @@ void main( void ) {
     printf("Value of register 25: 0x%x\n", regval);
 
 #else
+
     MAX_start(false);
+    //printf("Started as peripheral.\n");
     MAX_enableEPInterrupts(MAX_IRQ_SUDAV);
     MAX_clearEPInterruptStatus(MAX_IRQ_SUDAV);
     MAX_enableInterruptsMaster();
+
 #endif
 
     while ( 1 ) {
