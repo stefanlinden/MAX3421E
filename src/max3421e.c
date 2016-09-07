@@ -8,8 +8,9 @@
 #include <driverlib.h>
 #include <stdbool.h>
 
-#include "packets.h"
+#include "usb.h"
 #include "max3421e.h"
+#include "delay.h"
 
 #define BUFFER_SIZE 14
 
@@ -28,7 +29,7 @@ volatile uint_fast8_t lastTransferResult;
 /* PROTOTYPES FOR PRIVATE FUNCTIONS */
 
 uint_fast8_t _getCommandByte( uint_fast8_t, uint_fast8_t );
-void _sendControlPacket( ControlPacket * );
+void MAX_sendControlPacket( ControlPacket * );
 
 /* PUBLIC FUNCTIONS */
 
@@ -147,7 +148,10 @@ void MAX_disableInterruptsMaster( void ) {
 }
 
 uint_fast8_t MAX_getInterruptStatus( void ) {
-    return MAX_readRegister(25);
+    if ( mode )
+        return MAX_readRegister(rHIRQ);
+    else
+        return MAX_readRegister(rUSBIRQ);
 }
 
 uint_fast8_t MAX_getEnabledInterruptStatus( void ) {
@@ -169,7 +173,6 @@ uint_fast8_t MAX_writeRegister( uint_fast8_t address, uint_fast8_t value ) {
 
     /* Start the transaction by pulling the CS low */
     SET_CS_LOW
-    ;
 
     /* Build and transmit the command byte */
     SIMSPI_transmitByte(_getCommandByte(address, DIR_WRITE));
@@ -178,9 +181,13 @@ uint_fast8_t MAX_writeRegister( uint_fast8_t address, uint_fast8_t value ) {
 
     /* End the transaction by pulling the CS back to high */
     SET_CS_HIGH
-    ;
 
     return result;
+}
+
+uint_fast8_t MAX_writeRegisterAS( uint_fast8_t address, uint_fast8_t value ) {
+    ACKSTAT = true;
+    return MAX_writeRegister(address, value);
 }
 
 uint_fast8_t MAX_multiWriteRegister( uint_fast8_t address,
@@ -189,7 +196,6 @@ uint_fast8_t MAX_multiWriteRegister( uint_fast8_t address,
 
     /* Start the transaction by pulling the CS low */
     SET_CS_LOW
-    ;
 
     /* Build and transmit the command byte */
     SIMSPI_transmitByte(_getCommandByte(address, DIR_WRITE));
@@ -198,7 +204,6 @@ uint_fast8_t MAX_multiWriteRegister( uint_fast8_t address,
 
     /* End the transaction by pulling the CS back to high */
     SET_CS_HIGH
-    ;
 
     return result;
 }
@@ -208,7 +213,6 @@ uint_fast8_t MAX_readRegister( uint_fast8_t address ) {
 
     /* Start the transaction by pulling the CS low */
     SET_CS_LOW
-    ;
 
     /* Transmit the command byte */
     SIMSPI_transmitByte(_getCommandByte(address, DIR_READ));
@@ -217,7 +221,6 @@ uint_fast8_t MAX_readRegister( uint_fast8_t address ) {
 
     /* End the transaction by pulling the CS back to high */
     SET_CS_HIGH
-    ;
 
     return result;
 }
@@ -227,7 +230,6 @@ void MAX_multiReadRegister( uint_fast8_t address, uint_fast8_t * buffer,
 
     /* Start the transaction by pulling the CS low */
     SET_CS_LOW
-    ;
 
     /* Transmit the command byte */
     SIMSPI_transmitByte(_getCommandByte(address, DIR_READ));
@@ -236,7 +238,6 @@ void MAX_multiReadRegister( uint_fast8_t address, uint_fast8_t * buffer,
 
     /* End the transaction by pulling the CS back to high */
     SET_CS_HIGH
-    ;
 }
 
 void MAX_enableOptions( uint_fast8_t address, uint_fast8_t flags ) {
@@ -261,19 +262,6 @@ void MAX_disableOptions( uint_fast8_t address, uint_fast8_t flags ) {
     MAX_writeRegister(address, regVal);
 }
 
-void MAX_setNewPeripheralAddress( uint_fast8_t peraddress ) {
-    ControlPacket addrPacket = { 0, /* perAddress */
-    0x10, /* type */
-    0, /* endPoint */
-    0, /*bmRequestType*/
-    0x05, /* bRequest */
-    peraddress, /* wValue */
-    0, /* wIndex */
-    0 /* wLength */
-    };
-    _sendControlPacket(&addrPacket);
-}
-
 /* PRIVATE FUNCTIONS */
 
 uint_fast8_t _getCommandByte( uint_fast8_t address, uint_fast8_t direction ) {
@@ -285,7 +273,10 @@ uint_fast8_t _getCommandByte( uint_fast8_t address, uint_fast8_t direction ) {
     return result;
 }
 
-void _sendControlPacket( ControlPacket * packet ) {
+void MAX_sendControlPacket( ControlPacket * packet ) {
+    /* Make sure the peripheral address is correct */
+    MAX_writeRegister(rPERADDR, packet->perAddress);
+
     /* Load the contents from the given packet and send this as a Control packet */
     TXData[0] = packet->bmRequestType;
     TXData[1] = packet->bRequest;
@@ -302,35 +293,38 @@ void _sendControlPacket( ControlPacket * packet ) {
     /* Instruct the module to send the data as the specified type */
     MAX_writeRegister(30, packet->type | packet->endPoint);
 
-    printf("Writing to 31: 0x%x.\n", packet->type | packet->endPoint);
+    printf("Sending bRequest: 0x%x.\n", packet->bRequest);
 
     uint_fast8_t regval;
-    regval = MAX_readRegister(31);
-    printf("Value of register 31 (1): 0x%x\n", regval & 0x0F);
 
-    uint8_t timeout = 0xFF;
-    while ( MAX_readRegister(31) & 0x0F || timeout )
+    uint16_t timeout = 0xFFFF;
+    while ( MAX_readRegister(31) & 0x0F && timeout )
         timeout--;
 
-    regval = MAX_readRegister(31);
-    printf("Value of register 31 (2): 0x%x\n", regval & 0x0F);
+    regval = MAX_readRegister(31) & 0x0F;
 
-    if(!regval) {
+    if ( regval ) {
         printf("Error or timeout: 0x%x.\n", regval);
         return;
     }
 
-    MAX_writeRegister(30, 0x80);
+    /* Send an HS-IN or HS-OUT. Note the direction is switched in the logic */
+    if ( packet->direction == DIR_IN ) {
+        MAX_writeRegister(rHXFR, 0x80);
+    } else {
+        MAX_writeRegister(rHXFR, 0xA0);
+    }
 
-    timeout = 0xFF;
-    while ( MAX_readRegister(31) & 0x0F || timeout )
-    timeout--;
+    timeout = 0xFFFF;
+    while ( MAX_readRegister(31) & 0x0F && timeout )
+        timeout--;
 
-    //MAX_writeRegister(28, 0x01);
-    //MAX_writeRegister(30, 0x80);
+    regval = MAX_readRegister(31) & 0x0F;
 
-    regval = MAX_readRegister(31);
-    printf("Value of register 31 (3): 0x%x\n", regval & 0x0F);
+    if ( regval ) {
+        printf("Error or timeout: 0x%x.\n", regval);
+        return;
+    }
 }
 
 /* INTERRUPT HANDLERS */
@@ -339,65 +333,83 @@ void GPIOP2_ISR( void ) {
 
     uint_fast8_t regval, USBStatus, USBEPStatus;
     uint_fast32_t status;
-    status = MAP_GPIO_getInterruptStatus(USBINT_PORT, USBINT_PIN);
+    //status = MAP_GPIO_getInterruptStatus(USBINT_PORT, USBINT_PIN);
 
-    if ( status & GPIO_PIN3 ) {
-        /* Get the IQR status */
-        USBStatus = MAX_getEnabledInterruptStatus( );
-        if ( !mode )
-            USBEPStatus = MAX_getEnabledEPInterruptStatus( );
-        else
-            USBEPStatus = 0;
+    //if ( status & GPIO_PIN3 ) {
+    /* Get the IQR status */
+    USBStatus = MAX_getEnabledInterruptStatus( );
+    USBEPStatus = MAX_getEnabledEPInterruptStatus( );
 
-        if ( USBStatus & MAX_IRQ_HXFRDN ) {
-            /* Indicates host transfer done */
-            lastTransferResult = MAX_readRegister(31) & 0x0F;
-            printf("Transfer result: 0x%x\n", lastTransferResult);
-        }
-        if ( USBStatus & MAX_IRQ_CONDET ) {
-            /* Triggered on connect/disconnect of a peripheral */
-            regval = MAX_readRegister(31);
-            if ( regval & 0xC0 ) {
-                peripheralConnected = 1;
+    //printf("Status: 0x%x, 0x%x\n", USBStatus, USBEPStatus);
+    //SysCtlDelay(30);
 
-                /* Turn on the blue LED */
-                MAP_GPIO_setOutputHighOnPin(GPIO_PORT_P2, GPIO_PIN2);
-                /* Enable the SOF generator */
-                MAX_enableOptions(27, BIT3);
-
-                int i;
-                for ( i = 0; i < 100000; i++ )
-                    ;
-
-                MAX_setNewPeripheralAddress(1);
-            } else {
-                peripheralConnected = 0;
-                /* Disable the SOF generator */
-                MAX_disableOptions(27, BIT3);
-
-                /* Turn off the blue LED */
-                MAP_GPIO_setOutputLowOnPin(GPIO_PORT_P2, GPIO_PIN2);
-            }
-        }
-
-        if ( USBEPStatus & MAX_IRQ_SUDAV ) {
-
-            MAX_multiReadRegister(4, (uint_fast8_t *) RXData, 8);
+    if ( USBEPStatus & MAX_IRQ_SUDAV ) {
+        MAX_writeRegister(rEPIRQ, BIT5);
+        MAX_multiReadRegister(4, (uint_fast8_t *) RXData, 8);
+        switch ( RXData[1] ) {
+        case reqSET_ADDRESS:
             ACKSTAT = true;
             MAX_readRegister(19);
-
-            int i;
-            for(i = 0; i < 50000; i++);
-
-            regval = MAX_readRegister(19);
-            printf("Value of register 19: 0x%x\n", regval);
+            break;
+        case reqGET_STATUS:
+            USB_respondStatus((uint_fast8_t *) RXData);
+            break;
         }
+
+        //printf("Got setup: 0x%x\n", RXData[1]);
+
+        /* Perform a short delay until the address is set */
+        //SysCtlDelay(5000);
+        //regval = MAX_readRegister(19);
+        //printf("Value of register 19: 0x%x\n", regval);
     }
+
+    if ( USBStatus & MAX_IRQ_RCVDAV ) {
+        MAX_writeRegister(rHIRQ, BIT2);
+        printf("Received something!\n");
+    }
+
+    if ( USBStatus & MAX_IRQ_HXFRDN ) {
+        /* Indicates host transfer done */
+        MAX_writeRegister(rHIRQ, BIT7);
+        lastTransferResult = MAX_readRegister(31) & 0x0F;
+        printf("Transfer result: 0x%x\n", lastTransferResult);
+    }
+    if ( USBStatus & MAX_IRQ_CONDET ) {
+        /* Triggered on connect/disconnect of a peripheral */
+
+        regval = MAX_readRegister(31);
+        if ( regval & 0xC0 ) {
+            peripheralConnected = 1;
+
+            /* Turn on the blue LED */
+            MAP_GPIO_setOutputHighOnPin(GPIO_PORT_P2, GPIO_PIN2);
+            /* Enable the SOF generator */
+            MAX_enableOptions(27, BIT3);
+
+            USB_setNewPeripheralAddress(PERIPHERAL_ADDRESS);
+            SysCtlDelay(320000);
+            uint_fast8_t res;
+            USB_requestStatus(&res);
+            printf("Done with enumeration!\n");
+
+        } else {
+            peripheralConnected = 0;
+            /* Disable the SOF generator */
+            MAX_disableOptions(27, BIT3);
+
+            /* Turn off the blue LED */
+            MAP_GPIO_setOutputLowOnPin(GPIO_PORT_P2, GPIO_PIN2);
+        }
+        MAX_writeRegister(rHIRQ, BIT5);
+    }
+    //}
+
     /* Clear the interrupts */
-    MAX_clearInterruptStatus(USBStatus);
-    if ( !mode )
-        MAX_clearEPInterruptStatus(USBEPStatus);
-
-    MAP_GPIO_clearInterruptFlag(USBINT_PORT, USBINT_PIN);
-
+    //MAX_clearInterruptStatus(USBStatus);
+    //if ( !mode ) {
+    //    MAX_clearEPInterruptStatus(USBEPStatus);
+    //}
+    /* Clear the local interrupt */
+    //MAP_GPIO_clearInterruptFlag(USBINT_PORT, USBINT_PIN);
 }

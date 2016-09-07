@@ -9,6 +9,7 @@
 #include <driverlib.h>
 
 #include "max3421e.h"
+#include "usb.h"
 
 //#define ISMASTER
 
@@ -23,8 +24,8 @@ void main( void ) {
     MAX_start(true);
 
     /* Enable interrupts */
-    MAX_clearInterruptStatus(MAX_IRQ_CONDET | MAX_IRQ_RCVDAV | MAX_IRQ_HXFRDN);
     MAX_enableInterrupts(MAX_IRQ_CONDET | MAX_IRQ_RCVDAV | MAX_IRQ_HXFRDN);
+    MAX_clearInterruptStatus(MAX_IRQ_CONDET | MAX_IRQ_RCVDAV | MAX_IRQ_HXFRDN);
     MAX_enableInterruptsMaster();
 
     uint_fast8_t regval = MAX_readRegister(13);
@@ -34,9 +35,7 @@ void main( void ) {
     printf("Value of register 25: 0x%x\n", regval);
 
 #else
-
     MAX_start(false);
-    //printf("Started as peripheral.\n");
     MAX_enableEPInterrupts(MAX_IRQ_SUDAV);
     MAX_clearEPInterruptStatus(MAX_IRQ_SUDAV);
     MAX_enableInterruptsMaster();

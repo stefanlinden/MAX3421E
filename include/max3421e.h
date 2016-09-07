@@ -9,6 +9,7 @@
 #include <stdio.h>
 
 #include "simple_spi.h"
+#include "usb.h"
 
 #ifndef INCLUDE_MAX3421E_H_
 #define INCLUDE_MAX3421E_H_
@@ -49,6 +50,47 @@
 #define MODE_PERIPH         0
 #define MODE_HOST           1
 
+#define rEP0FIFO        0
+#define rEP1OUTFIFO     1
+#define rEP2INFIFO      2
+#define rEP3INFIFO      3
+#define rSUDFIFO        4
+#define rEP0BC          5
+#define rEP1OUTBC       6
+#define rEP2INBC        7
+#define rEP3INBC        8
+#define rEPSTALLS       9
+#define rCLRTOGS        10
+#define rEPIRQ          11
+#define rEPIEN          12
+#define rUSBIRQ         13
+#define rUSBIEN         14
+#define rUSBCTL         15
+#define rCPUCTL         16
+#define rPINCTL         17
+#define rREVISION       18
+#define rFNADDR         19
+#define rIOPINS         20
+
+#define rRCVFIFO        1
+#define rSNDFIFO        2
+#define rSUDFIFO        4
+#define rRCVBC          6
+#define rSNDBC          7
+#define rIOPINS1        20
+#define rIOPINS2        21
+#define rGPINIRQ        22
+#define rGPINIEN        23
+#define rGPINPOL        24
+#define rHIRQ           25
+#define rHIEN           26
+#define rMODE           27
+#define rPERADDR        28
+#define rHCTL           29
+#define rHXFR           30
+#define rHRSL           31
+
+
 /* Change this GPIO pin to change the interrupt pin */
 #define USBINT_PORT GPIO_PORT_P2
 #define USBINT_PIN  GPIO_PIN3
@@ -79,6 +121,18 @@ void MAX_reset( void );
  * uint_fast8_t: the byte read concurrently on MISO while writing on MOSI
  */
 uint_fast8_t MAX_writeRegister(uint_fast8_t, uint_fast8_t);
+
+/**
+ * Write to the specified register, including the ACKSTAT bit set to true
+ *
+ * Parameters:
+ * uint_fast8_t address: register address to write to
+ * uint_fast8_t value: the value to write to the specified register
+ *
+ * Returns:
+ * uint_fast8_t: the byte read concurrently on MISO while writing on MOSI
+ */
+uint_fast8_t MAX_writeRegisterAS(uint_fast8_t, uint_fast8_t);
 
 /**
  * Write to the specified register
@@ -134,12 +188,12 @@ void MAX_enableOptions(uint_fast8_t, uint_fast8_t);
 void MAX_disableOptions(uint_fast8_t, uint_fast8_t);
 
 /**
- * Send a Set_Address Control packet
+ * Send the given Setup Packet
  *
  * Parameters:
- * uint_fast8_t peraddress: the new peripheral address
+ * SetupPacket * packet: a reference to the packet to transmit
  */
-void MAX_setNewPeripheralAddress(uint_fast8_t);
+void MAX_sendControlPacket( ControlPacket * );
 
 /**
  * Enable interrupts
