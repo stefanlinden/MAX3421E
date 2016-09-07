@@ -16,8 +16,8 @@
  */
 #define PERIPHERAL_ADDRESS 5
 
-#define DIR_IN      0
-#define DIR_OUT      1
+#define DIR_OUT      0
+#define DIR_IN      1
 
 /* Transfer Tokens */
 #define xfrSETUP    0x10

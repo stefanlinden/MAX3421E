@@ -11,7 +11,7 @@
 #include "max3421e.h"
 #include "usb.h"
 
-//#define ISMASTER
+#define ISMASTER
 
 void main( void ) {
 
@@ -24,8 +24,8 @@ void main( void ) {
     MAX_start(true);
 
     /* Enable interrupts */
-    MAX_enableInterrupts(MAX_IRQ_CONDET | MAX_IRQ_RCVDAV | MAX_IRQ_HXFRDN);
-    MAX_clearInterruptStatus(MAX_IRQ_CONDET | MAX_IRQ_RCVDAV | MAX_IRQ_HXFRDN);
+    MAX_enableInterrupts(MAX_IRQ_CONDET | MAX_IRQ_RCVDAV);
+    MAX_clearInterruptStatus(MAX_IRQ_CONDET | MAX_IRQ_RCVDAV);
     MAX_enableInterruptsMaster();
 
     uint_fast8_t regval = MAX_readRegister(13);

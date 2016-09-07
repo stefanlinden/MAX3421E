@@ -20,6 +20,8 @@
 #define DIR_WRITE 1
 #define DIR_READ  0
 
+#define BUFFER_SIZE 14
+
 #define MAX_IRQ_BUSEVENT    BIT0
 #define MAX_IRQ_RWU         BIT1
 #define MAX_IRQ_RCVDAV      BIT2
@@ -187,13 +189,7 @@ void MAX_enableOptions(uint_fast8_t, uint_fast8_t);
  */
 void MAX_disableOptions(uint_fast8_t, uint_fast8_t);
 
-/**
- * Send the given Setup Packet
- *
- * Parameters:
- * SetupPacket * packet: a reference to the packet to transmit
- */
-void MAX_sendControlPacket( ControlPacket * );
+
 
 /**
  * Enable interrupts

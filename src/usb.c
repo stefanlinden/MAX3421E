@@ -6,6 +6,7 @@
  */
 
 #include "usb.h"
+#include "packets.h"
 #include "max3421e.h"
 
 
@@ -21,9 +22,9 @@ void USB_setNewPeripheralAddress( uint_fast8_t peraddress ) {
     peraddress, /* wValue */
     0, /* wIndex */
     0, /* wLength */
-    DIR_IN /* direction */
+    DIR_OUT /* direction */
     };
-    MAX_sendControlPacket(&addrPacket);
+    sendControl(&addrPacket);
 }
 
 void USB_requestStatus( uint_fast8_t * resultBuffer ) {
@@ -35,8 +36,8 @@ void USB_requestStatus( uint_fast8_t * resultBuffer ) {
     0, /* wValue */
     0, /* wIndex */
     2, /* wLength */
-    DIR_OUT };
-    MAX_sendControlPacket(&packet);
+    DIR_IN };
+    sendControl(&packet);
 }
 
 
