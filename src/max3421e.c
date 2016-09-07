@@ -8,8 +8,8 @@
 #include <driverlib.h>
 #include <stdbool.h>
 
-#include "packets.h"
 #include "max3421e.h"
+#include "usb.h"
 
 #define BUFFER_SIZE 14
 
@@ -28,7 +28,7 @@ volatile uint_fast8_t lastTransferResult;
 /* PROTOTYPES FOR PRIVATE FUNCTIONS */
 
 uint_fast8_t _getCommandByte( uint_fast8_t, uint_fast8_t );
-void _sendControlPacket( ControlPacket * );
+void _sendControlPacket( SetupPacket * );
 
 /* PUBLIC FUNCTIONS */
 
@@ -169,7 +169,6 @@ uint_fast8_t MAX_writeRegister( uint_fast8_t address, uint_fast8_t value ) {
 
     /* Start the transaction by pulling the CS low */
     SET_CS_LOW
-    ;
 
     /* Build and transmit the command byte */
     SIMSPI_transmitByte(_getCommandByte(address, DIR_WRITE));
@@ -178,9 +177,13 @@ uint_fast8_t MAX_writeRegister( uint_fast8_t address, uint_fast8_t value ) {
 
     /* End the transaction by pulling the CS back to high */
     SET_CS_HIGH
-    ;
 
     return result;
+}
+
+uint_fast8_t MAX_writeRegisterAS( uint_fast8_t address, uint_fast8_t value ) {
+    ACKSTAT = true;
+    return MAX_writeRegister(address, value);
 }
 
 uint_fast8_t MAX_multiWriteRegister( uint_fast8_t address,
@@ -189,7 +192,6 @@ uint_fast8_t MAX_multiWriteRegister( uint_fast8_t address,
 
     /* Start the transaction by pulling the CS low */
     SET_CS_LOW
-    ;
 
     /* Build and transmit the command byte */
     SIMSPI_transmitByte(_getCommandByte(address, DIR_WRITE));
@@ -198,7 +200,6 @@ uint_fast8_t MAX_multiWriteRegister( uint_fast8_t address,
 
     /* End the transaction by pulling the CS back to high */
     SET_CS_HIGH
-    ;
 
     return result;
 }
@@ -261,31 +262,55 @@ void MAX_disableOptions( uint_fast8_t address, uint_fast8_t flags ) {
     MAX_writeRegister(address, regVal);
 }
 
-void MAX_setNewPeripheralAddress( uint_fast8_t peraddress ) {
-    ControlPacket addrPacket = { 0, /* perAddress */
-    0x10, /* type */
-    0, /* endPoint */
-    0, /*bmRequestType*/
-    0x05, /* bRequest */
-    peraddress, /* wValue */
-    0, /* wIndex */
-    0 /* wLength */
-    };
-    _sendControlPacket(&addrPacket);
+void MAX_sendControlPacket( SetupPacket * packet ) {
+    /* Load the contents from the given packet and send this as a Control packet */
+    TXData[0] = packet->bmRequestType;
+    TXData[1] = packet->bRequest;
+    TXData[2] = (uint_fast8_t) (packet->wValue);
+    TXData[3] = (uint_fast8_t) (packet->wValue >> 8);
+    TXData[4] = (uint_fast8_t) (packet->wIndex);
+    TXData[5] = (uint_fast8_t) (packet->wIndex >> 8);
+    TXData[6] = (uint_fast8_t) (packet->wLength);
+    TXData[7] = (uint_fast8_t) (packet->wLength >> 8);
+
+    /* Write the data into the DUPFIFO */
+    MAX_multiWriteRegister(4, (uint_fast8_t *) TXData, 8);
+
+    /* Instruct the module to send the data as the specified type */
+    MAX_writeRegister(rHXFR, packet->type | packet->endPoint);
+
+    uint_fast8_t regval;
+
+    uint8_t timeout = 0xFF;
+    while ( ( MAX_readRegister(rHRSL) & 0x0F) && timeout )
+        timeout--;
+
+    regval = MAX_readRegister(rHRSL);
+    if ( ( regval & 0x0F )) {
+        printf("Error or timeout: 0x%x.\n", regval);
+        return;
+    }
+
+    /* Send an HS-IN or HS-OUT. Note the direction is switched in the logic */
+    /*if ( packet->direction == DIR_IN ) {
+        MAX_writeRegister(rHXFR, 0x80);
+    } else {
+        MAX_writeRegister(rHXFR, 0xA0);
+    }*/
+    MAX_writeRegister(rHXFR, 0x80);
+
+    timeout = 0xFF;
+    while ( (MAX_readRegister(rHRSL) & 0x0F) && timeout)
+        timeout--;
+
+    regval = MAX_readRegister(rHRSL) & 0x0F;
+    if ( regval & 0x0F ) {
+        printf("Error or timeout: 0x%x.\n", regval);
+        return;
+    }
 }
 
-/* PRIVATE FUNCTIONS */
-
-uint_fast8_t _getCommandByte( uint_fast8_t address, uint_fast8_t direction ) {
-    uint_fast8_t result = 0;
-    result |= address << 3;
-    result |= direction << 1;
-    result |= ACKSTAT;
-    ACKSTAT = false;
-    return result;
-}
-
-void _sendControlPacket( ControlPacket * packet ) {
+void _sendControlPacket( SetupPacket * packet ) {
     /* Load the contents from the given packet and send this as a Control packet */
     TXData[0] = packet->bmRequestType;
     TXData[1] = packet->bRequest;
@@ -333,6 +358,17 @@ void _sendControlPacket( ControlPacket * packet ) {
     printf("Value of register 31 (3): 0x%x\n", regval & 0x0F);
 }
 
+/* PRIVATE FUNCTIONS */
+
+uint_fast8_t _getCommandByte( uint_fast8_t address, uint_fast8_t direction ) {
+    uint_fast8_t result = 0;
+    result |= address << 3;
+    result |= direction << 1;
+    result |= ACKSTAT;
+    ACKSTAT = false;
+    return result;
+}
+
 /* INTERRUPT HANDLERS */
 
 void GPIOP2_ISR( void ) {
@@ -349,6 +385,9 @@ void GPIOP2_ISR( void ) {
         else
             USBEPStatus = 0;
 
+        if( USBStatus & MAX_IRQ_RCVDAV) {
+            printf("Received something!\n");
+        }
         if ( USBStatus & MAX_IRQ_HXFRDN ) {
             /* Indicates host transfer done */
             lastTransferResult = MAX_readRegister(31) & 0x0F;
@@ -365,11 +404,11 @@ void GPIOP2_ISR( void ) {
                 /* Enable the SOF generator */
                 MAX_enableOptions(27, BIT3);
 
-                int i;
-                for ( i = 0; i < 100000; i++ )
-                    ;
+                USB_setNewPeripheralAddress(PERIPHERAL_ADDRESS);
+                //uint_fast8_t periphStatus[2];
+                //USB_requestStatus(periphStatus);
 
-                MAX_setNewPeripheralAddress(1);
+                //printf("Status: 0x%x%x\n", periphStatus[0], periphStatus[1]);
             } else {
                 peripheralConnected = 0;
                 /* Disable the SOF generator */
@@ -380,16 +419,21 @@ void GPIOP2_ISR( void ) {
             }
         }
 
+        /* We've got a Setup package */
         if ( USBEPStatus & MAX_IRQ_SUDAV ) {
 
-            MAX_multiReadRegister(4, (uint_fast8_t *) RXData, 8);
+            MAX_multiReadRegister(rSUDFIFO, (uint_fast8_t *) RXData, 8);
+            /*switch ( RXData[1] ) {
+            case reqGET_STATUS: USB_respondStatus((uint_fast8_t *) RXData); break;
+            case reqSET_ADDRESS: ACKSTAT = true; MAX_readRegister(rFNADDR); break;
+
+            default:
+                USB_stallEndpoint(0);
+            }*/
             ACKSTAT = true;
             MAX_readRegister(19);
 
-            int i;
-            for(i = 0; i < 50000; i++);
-
-            regval = MAX_readRegister(19);
+            regval = MAX_readRegister(rFNADDR);
             printf("Value of register 19: 0x%x\n", regval);
         }
     }
