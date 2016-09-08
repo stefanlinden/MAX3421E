@@ -18,7 +18,7 @@ uint_fast8_t transmitPacket( uint_fast8_t, uint_fast8_t );
  * Parameters:
  * SetupPacket * packet: a reference to the packet to transmit
  */
-void sendControl( ControlPacket * );
+uint_fast8_t sendControl( ControlPacket * );
 
 
 #endif /* INCLUDE_PACKETS_H_ */

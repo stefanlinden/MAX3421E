@@ -24,14 +24,17 @@ volatile uint_fast8_t enabledEPIRQ;
 volatile uint_fast8_t peripheralConnected;
 volatile uint_fast8_t lastTransferResult;
 
+const uint8_t bulkData[8] = { 1, 2, 3, 4, 5, 6, 7, 8 };
+
 /* PROTOTYPES FOR PRIVATE FUNCTIONS */
 
 uint_fast8_t _getCommandByte( uint_fast8_t, uint_fast8_t );
-void sendControl( ControlPacket * );
 
 /* PUBLIC FUNCTIONS */
 
 void MAX_start( uint_fast8_t startAsMaster ) {
+    mode = startAsMaster;
+
     /* Start SPI */
     SIMSPI_startSPI( );
 
@@ -54,14 +57,12 @@ void MAX_start( uint_fast8_t startAsMaster ) {
 
     if ( startAsMaster ) {
         /* We're starting as a USB host/master */
-        mode = MODE_HOST;
 
         /* Enable HOST, DMPULLDN and DPPULLDN */
         MAX_enableOptions(27, BIT0 | BIT6 | BIT7);
 
     } else {
         /* We're starting as a peripheral */
-        mode = MODE_PERIPH;
         MAX_enableOptions(15, BIT3);
     }
 }
@@ -78,8 +79,15 @@ void MAX_reset( void ) {
 
     /* Reset the interrupt state */
     MAX_disableInterruptsMaster( );
-    MAX_writeRegister(26, 0);
-    MAX_writeRegister(25, 0xFF);
+    if ( mode ) {
+        MAX_writeRegister(rHIEN, 0);
+        MAX_writeRegister(rHIRQ, 0xFF);
+    } else {
+        MAX_writeRegister(rEPIEN, 0);
+        MAX_writeRegister(rEPIRQ, 0xFF);
+        MAX_writeRegister(rUSBIEN, 0);
+        MAX_writeRegister(rUSBIRQ, 0xFF);
+    }
     enabledIRQ = 0;
     enabledEPIRQ = 0;
     ACKSTAT = false;
@@ -127,7 +135,10 @@ void MAX_disableEPInterrupts( uint_fast8_t flags ) {
 
 void MAX_clearInterruptStatus( uint_fast8_t flags ) {
     /* Clear the specified interrupts */
-    MAX_enableOptions(25, flags);
+    if ( mode )
+        MAX_enableOptions(25, flags);
+    else
+        MAX_enableOptions(13, flags);
 }
 
 void MAX_clearEPInterruptStatus( uint_fast8_t flags ) {
@@ -297,15 +308,36 @@ void GPIOP2_ISR( void ) {
         }
         //SysCtlDelay(5000);
         //regval = MAX_readRegister(19);
-        printf("Address: 0x%x.\n", regval);
+        //printf("Address: 0x%x.\n", regval);
     }
 
-    if ( USBStatus & MAX_IRQ_RCVDAV ) {
+    if ( USBEPStatus & MAX_IRQ_IN2BAV ) {
+        MAX_multiWriteRegister(rEP2INFIFO, (uint_fast8_t *) bulkData, 8);
+        MAX_writeRegisterAS(rEP2INBC, 8);
+        MAX_writeRegister(rEPIRQ, MAX_IRQ_IN2BAV);
+    }
+
+    if ( !mode && USBStatus & MAX_IRQ_URES ) {
+        MAX_writeRegister(rUSBIRQ, MAX_IRQ_URES);
+        MAX_reset( );
+
+        /* Re-enable all interrupts */
+        MAX_enableEPInterrupts(MAX_IRQ_SUDAV);
+        MAX_clearEPInterruptStatus(MAX_IRQ_SUDAV);
+        MAX_enableInterrupts(MAX_IRQ_URES);
+        MAX_clearInterruptStatus(MAX_IRQ_URES);
+        MAX_enableInterruptsMaster( );
+    }
+
+    if ( mode && USBStatus & MAX_IRQ_RCVDAV ) {
+        uint8_t readlength = MAX_readRegister(rRCVBC);
+        printf("Received %d bytes!\n", readlength);
+        MAX_multiReadRegister(rRCVFIFO, (uint_fast8_t *) RXData, readlength);
         MAX_writeRegister(rHIRQ, BIT2);
-        printf("Received %d bytes!\n", MAX_readRegister(rRCVBC));
+        printf("First byte: 0x%x\n", RXData[0]);
     }
 
-    if ( USBStatus & MAX_IRQ_CONDET ) {
+    if ( mode && USBStatus & MAX_IRQ_CONDET ) {
         /* Triggered on connect/disconnect of a peripheral */
 
         regval = MAX_readRegister(31);
@@ -316,15 +348,16 @@ void GPIOP2_ISR( void ) {
             MAP_GPIO_setOutputHighOnPin(GPIO_PORT_P2, GPIO_PIN2);
             /* Enable the SOF generator */
             MAX_enableOptions(27, BIT3);
+            while ( !(MAX_readRegister(rHIRQ) & MAX_IRQ_FRAME ) )
+                ;
 
             MAX_enableOptions(rHCTL, BIT7);
             MAX_enableOptions(rHCTL, BIT5);
 
-            USB_setNewPeripheralAddress(PERIPHERAL_ADDRESS);
-            SysCtlDelay(2000);
-            uint_fast8_t res;
-            USB_requestStatus(&res);
-            //printf("Done with enumeration!\n");
+            USB_doEnumeration( );
+            printf("Done with enumeration!\n");
+            printf("Requesting data...\n");
+            //transmitPacket(xfrIN, 2);
 
         } else {
             peripheralConnected = 0;

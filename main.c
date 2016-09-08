@@ -24,8 +24,8 @@ void main( void ) {
     MAX_start(true);
 
     /* Enable interrupts */
-    MAX_enableInterrupts(MAX_IRQ_CONDET | MAX_IRQ_RCVDAV);
-    MAX_clearInterruptStatus(MAX_IRQ_CONDET | MAX_IRQ_RCVDAV);
+    MAX_enableInterrupts(MAX_IRQ_CONDET);
+    MAX_clearInterruptStatus(MAX_IRQ_CONDET);
     MAX_enableInterruptsMaster();
 
     uint_fast8_t regval = MAX_readRegister(13);
@@ -38,6 +38,8 @@ void main( void ) {
     MAX_start(false);
     MAX_enableEPInterrupts(MAX_IRQ_SUDAV);
     MAX_clearEPInterruptStatus(MAX_IRQ_SUDAV);
+    //MAX_enableInterrupts(MAX_IRQ_URES);
+    //MAX_clearInterruptStatus(MAX_IRQ_URES);
     MAX_enableInterruptsMaster();
 
 #endif

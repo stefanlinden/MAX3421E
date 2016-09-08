@@ -76,7 +76,7 @@ typedef struct {
  * Parmeters:
  * uint_fast8_t * resultBuffer: a two-byte array for storing the result
  */
-void USB_requestStatus(uint_fast8_t * );
+uint_fast8_t USB_requestStatus(uint_fast8_t * );
 
 /**
  * Send a Set_Address Control packet
@@ -84,7 +84,7 @@ void USB_requestStatus(uint_fast8_t * );
  * Parameters:
  * uint_fast8_t peraddress: the new peripheral address
  */
-void USB_setNewPeripheralAddress(uint_fast8_t);
+uint_fast8_t USB_setNewPeripheralAddress(uint_fast8_t);
 
 
 /* Peripheral Prototypes */
@@ -96,6 +96,10 @@ void USB_setNewPeripheralAddress(uint_fast8_t);
  * uint_fast8_t ep: the endpoint to stall
  */
 void USB_stallEndpoint( uint_fast8_t );
+
+void USB_doEnumeration( void );
+
+void USB_busReset( void );
 
 /** Takes a GET_STATUS requests and responds to it
  *

@@ -8,11 +8,11 @@
 #include "usb.h"
 #include "packets.h"
 #include "max3421e.h"
-
+#include "delay.h"
 
 /* Host functions */
 
-void USB_setNewPeripheralAddress( uint_fast8_t peraddress ) {
+uint_fast8_t USB_setNewPeripheralAddress( uint_fast8_t peraddress ) {
 
     ControlPacket addrPacket = { 0, /* perAddress */
     0x10, /* type */
@@ -24,10 +24,10 @@ void USB_setNewPeripheralAddress( uint_fast8_t peraddress ) {
     0, /* wLength */
     DIR_OUT /* direction */
     };
-    sendControl(&addrPacket);
+    return sendControl(&addrPacket);
 }
 
-void USB_requestStatus( uint_fast8_t * resultBuffer ) {
+uint_fast8_t USB_requestStatus( uint_fast8_t * resultBuffer ) {
     ControlPacket packet = { PERIPHERAL_ADDRESS, /* perAddress */
     0x10, /* type */
     0, /* endPoint */
@@ -37,9 +37,45 @@ void USB_requestStatus( uint_fast8_t * resultBuffer ) {
     0, /* wIndex */
     2, /* wLength */
     DIR_IN };
-    sendControl(&packet);
+    return sendControl(&packet);
 }
 
+void USB_doEnumeration( void ) {
+    /* First do a reset */
+    uint16_t tries = 0;
+    while ( tries < 20 ) {
+        if ( tries ) {
+            printf("Enumeration failed. Retrying...\n");
+            USB_busReset( );
+            SysCtlDelay(20000);
+        }
+        tries++;
+        if ( USB_setNewPeripheralAddress(PERIPHERAL_ADDRESS) )
+            continue;
+        //SysCtlDelay(2000);
+        if ( !USB_requestStatus(0) )
+            break;
+    }
+}
+
+void USB_busReset( void ) {
+    /* First disable the SOF generator */
+    MAX_disableOptions(rMODE, BIT3);
+
+    /* Perform the reset */
+    MAX_enableOptions(rHCTL, BIT0);
+    while ( !MAX_readRegister(rHCTL) & BIT0 ) {
+        SysCtlDelay(10000);
+    }
+
+    /* Restart the SOF generator */
+    MAX_enableOptions(rMODE, BIT3);
+
+    /* Wait until the first SOF is transmitted */
+    while ( !MAX_readRegister(rHIRQ) & BIT6 ) {
+        SysCtlDelay(100);
+    }
+}
 
 /* Peripheral functions */
 
@@ -62,7 +98,7 @@ void USB_respondStatus( uint_fast8_t * request ) {
         MAX_writeRegisterAS(rEP0BC, 2);
         break; // load byte count, arm the IN transfer,
         // ACK the status stage of the CTL transfer
-    //default:
+        //default:
         //USB_stallEndpoint(0);
         // don’t understand the request
     }
