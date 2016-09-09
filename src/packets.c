@@ -11,6 +11,7 @@
 #include "delay.h"
 
 volatile uint_fast8_t TXData[BUFFER_SIZE];
+volatile uint_fast8_t ControlBuffer[2];
 
 uint_fast8_t transmitPacket( uint_fast8_t token, uint_fast8_t ep ) {
     uint_fast8_t regval;
@@ -18,6 +19,8 @@ uint_fast8_t transmitPacket( uint_fast8_t token, uint_fast8_t ep ) {
 
     /* Instruct the module to send the data as the specified type */
     MAX_writeRegister(rHXFR, token | ep);
+
+    SysCtlDelay(1000);
 
     timeout = 0xFFFF;
     while ( timeout ) {
@@ -72,15 +75,22 @@ uint_fast8_t sendControl( ControlPacket * packet ) {
         if ( rescode )
             return rescode;
         timeout = 0xFFFF;
-        while ( (MAX_readRegister(rHIRQ) & MAX_IRQ_RCVDAV ) && timeout ) {
+        while ( !(MAX_readRegister(rHIRQ) & MAX_IRQ_RCVDAV ) && timeout) {
             timeout--;
-            SysCtlDelay(5);
+            SysCtlDelay(100);
+        }
+
+        if(timeout == 0) {
+            printf("Timeout! HIRQ: 0x%x\n", MAX_readRegister(rHIRQ));
         }
 
         /* Check if we got data and read if available */
         if ( MAX_readRegister(rHIRQ) & MAX_IRQ_RCVDAV ) {
             uint8_t readlength = MAX_readRegister(rRCVBC);
-            printf("Got control data: %d bytes\n", readlength);
+            MAX_multiReadRegister(rRCVFIFO, (uint_fast8_t *) ControlBuffer,
+                    readlength);
+            printf("Got control data: %d bytes (0x%x 0x%x)\n", readlength,
+                    ControlBuffer[0], ControlBuffer[1]);
             MAX_writeRegister(rHIRQ, MAX_IRQ_RCVDAV);
         }
     }
@@ -94,7 +104,7 @@ uint_fast8_t sendControl( ControlPacket * packet ) {
     return rescode;
 }
 
-uint_fast8_t requestData( uint_fast8_t * rxbuffer, uint_fast8_t nbytes) {
+uint_fast8_t requestData( uint_fast8_t * rxbuffer, uint_fast8_t nbytes ) {
     uint_fast8_t it, timeout, readlength, result;
 
     /* Send a BULK-IN request packet */
@@ -108,17 +118,19 @@ uint_fast8_t requestData( uint_fast8_t * rxbuffer, uint_fast8_t nbytes) {
     }
 
     /* Quit if we got a timeout */
-    if(!timeout)
+    if ( !timeout )
         return 0xFF;
-
-    /* Get the length of the received data (should be the same as nbytes) */
-    readlength = MAX_readRegister(rRCVBC);
-    if(readlength != nbytes)
-        return 0x0F;
-    //totalRcvd += readlength;
 
     /* This delay is apparently necessary, as the RX FIFO isn't directly ready (first byte will randomly corrupt) */
     SysCtlDelay(500);
+
+    /* Get the length of the received data (should be the same as nbytes) */
+    readlength = MAX_readRegister(rRCVBC);
+    if ( readlength != nbytes ) {
+        printf("Error: expected %d bytes, but got %d!\n", nbytes, readlength);
+        return 0xF0;
+    }
+    //totalRcvd += readlength;
 
     /* Check the transfer result code: if it's an error, then quit */
     result = MAX_readRegister(rHRSL) & 0x0F;

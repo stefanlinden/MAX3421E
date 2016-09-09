@@ -13,7 +13,7 @@
 #include "max3421e.h"
 #include "delay.h"
 
-volatile uint_fast8_t RXData[BUFFER_SIZE];
+extern volatile uint_fast8_t RXData[];
 volatile uint_fast8_t mode;
 volatile uint_fast8_t TXSize;
 
@@ -24,7 +24,7 @@ volatile uint_fast8_t enabledEPIRQ;
 volatile uint_fast8_t peripheralConnected;
 volatile uint_fast8_t lastTransferResult;
 
-volatile void (*handlePtr)(uint_fast8_t);
+volatile void (*handlePtr)( uint_fast8_t );
 
 /* PROTOTYPES FOR PRIVATE FUNCTIONS */
 
@@ -234,6 +234,11 @@ uint_fast8_t MAX_readRegister( uint_fast8_t address ) {
     return result;
 }
 
+uint_fast8_t MAX_readRegisterAS( uint_fast8_t address ) {
+    ACKSTAT = true;
+    return MAX_readRegister(address);
+}
+
 void MAX_multiReadRegister( uint_fast8_t address, uint_fast8_t * buffer,
         uint_fast8_t length ) {
 
@@ -272,9 +277,18 @@ void MAX_disableOptions( uint_fast8_t address, uint_fast8_t flags ) {
     MAX_writeRegister(address, regVal);
 }
 
-void setStateChangeIRQ(void (*handle)(uint_fast8_t)) {
+void MAX_setStateChangeIRQ( void (*handle)( uint_fast8_t ) ) {
     /* Assign the given handler to the local pointer */
-    handlePtr = (volatile void (*)(uint_fast8_t)) handle;
+    handlePtr = (volatile void (*)( uint_fast8_t )) handle;
+}
+
+uint_fast8_t MAX_scanBus( void ) {
+    /* Enable SAMPLEBUS */
+    MAX_enableOptions(rHCTL, BIT2);
+    while ( !(MAX_readRegister(rHCTL) & BIT2 ) )
+        SysCtlDelay(200);
+    /* Return the J/K state bits */
+    return (MAX_readRegister(rHRSL) & 0xC0) >> 6;
 }
 
 /* PRIVATE FUNCTIONS */
@@ -313,10 +327,12 @@ void GPIOP2_ISR( void ) {
         }
     }
 
+    /* Peripheral: the buffer is available again */
     if ( USBEPStatus & MAX_IRQ_IN2BAV ) {
         MAX_disableEPInterrupts(MAX_IRQ_IN2BAV);
     }
 
+    /* Peripheral: a bus reset was commanded */
     if ( !mode && USBStatus & MAX_IRQ_URESDN ) {
         MAX_writeRegister(rUSBIRQ, MAX_IRQ_URESDN);
 
@@ -330,8 +346,8 @@ void GPIOP2_ISR( void ) {
         MAX_writeRegister(rEP2INBC, 64);
     }
 
+    /* Host: a peripheral connected or disconnected */
     if ( mode && USBStatus & MAX_IRQ_CONDET ) {
-        /* Triggered on connect/disconnect of a peripheral */
 
         regval = MAX_readRegister(31);
         if ( regval & 0xC0 ) {
@@ -354,27 +370,8 @@ void GPIOP2_ISR( void ) {
             else
                 printf("Done with enumeration!\n");
 
-            SysCtlDelay(4000000);
-
-            /* Make sure the RX buffer is free */
-            MAX_writeRegister(rHIRQ, BIT2);
-
-            uint_fast8_t i, result;
-            uint_fast32_t totalRcvd = 0;
-            /* Make sure the interrupt is cleared */
-            MAX_writeRegister(rHIRQ, BIT2);
-            printf("Requesting data...\n");
-            printf("(Address: %d)\n", MAX_readRegister(rPERADDR));
-            for ( i = 0; i < 1000; i++ ) {
-                result = requestData((uint_fast8_t *) RXData, 64);
-                if(result != 0) {
-                    printf("Result error: 0x%x (%d)\n", result, i);
-                } else {
-                    totalRcvd += 64;
-                }
-            }
-            printf("Received %d bytes!\n", totalRcvd);
-
+            /* Add a delay to stabilise the bus */
+            SysCtlDelay(8000000);
         } else {
             peripheralConnected = 0;
             /* Disable the SOF generator */
@@ -383,7 +380,12 @@ void GPIOP2_ISR( void ) {
             /* Turn off the blue LED */
             MAP_GPIO_setOutputLowOnPin(GPIO_PORT_P2, GPIO_PIN2);
         }
+
+        if ( handlePtr != 0 )
+            handlePtr((uint_fast8_t) peripheralConnected);
+
         MAX_writeRegister(rHIRQ, BIT5);
+
     }
     MAP_GPIO_clearInterruptFlag(USBINT_PORT, USBINT_PIN);
 }

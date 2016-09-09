@@ -57,7 +57,7 @@ uint_fast8_t USB_doEnumeration( void ) {
         MAX_writeRegister(rPERADDR, 0);
         if ( !USB_setNewPeripheralAddress(PERIPHERAL_ADDRESS) ) {
             MAX_writeRegister(rPERADDR, PERIPHERAL_ADDRESS);
-            SysCtlDelay(480000);
+            SysCtlDelay(500000);
         } else {
             continue;
         }
@@ -100,13 +100,18 @@ void USB_respondStatus( uint_fast8_t * request ) {
     /* Based on example in http://pdfserv.maximintegrated.com/en/an/AN3690.pdf */
 
     uint_fast8_t testbyte;
+    uint_fast8_t bytes[2];
     testbyte = request[0];
     switch ( testbyte ) {
     case 0x80: // directed to DEVICE
-        MAX_writeRegister(rEP0FIFO, 0x03); // first byte is 000000rs
+        bytes[0] = 0x03;
+        bytes[1] = 0x00;
+        MAX_readRegisterAS(rPERADDR);
+        MAX_multiWriteRegister(rEP0FIFO, bytes, 2);
+        //MAX_writeRegister(rEP0FIFO, 0x03); // first byte is 000000rs
         // where r=enabled for RWU and s=self-powered.
-        MAX_writeRegister(rEP0FIFO, 0x00); // second byte is always 0
-        MAX_writeRegisterAS(rEP0BC, 2);
+        //MAX_writeRegister(rEP0FIFO, 0x00); // second byte is always 0
+        MAX_writeRegister(rEP0BC, 2);
         break; // load byte count, arm the IN transfer,
         // ACK the status stage of the CTL transfer
     case 0x81: // directed to INTERFACE

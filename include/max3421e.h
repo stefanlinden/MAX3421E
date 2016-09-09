@@ -161,6 +161,17 @@ uint_fast8_t MAX_multiWriteRegister(uint_fast8_t, uint_fast8_t *, uint_fast8_t);
 void MAX_multiReadRegister(uint_fast8_t, uint_fast8_t *, uint_fast8_t);
 
 /**
+ * Read multiple bytes from a register, setting ACKSTAT to true
+ *
+ * Parameters:
+ * uint_fast8_t address: register address to read from
+ * uint_fast8_t * buffer: an array of values to store the result in
+ * uint_fast8_t length: the number of bytes to read
+ *
+ */
+uint_fast8_t MAX_readRegisterAS( uint_fast8_t );
+
+/**
  * Read from the specified register
  *
  * Parameters:
@@ -280,5 +291,20 @@ uint_fast8_t MAX_getEPInterruptStatus( void );
  * uint_fast8_t: a byte containing the status of the enabled EP interrupts
  */
 uint_fast8_t MAX_getEnabledEPInterruptStatus( void );
+
+/**
+ * Set a function to be called when a peripheral connects or disconnects
+ *
+ * Parameters: the function pointer to be set
+ */
+void MAX_setStateChangeIRQ(void (*handle)(uint_fast8_t));
+
+/**
+ * Scan the bus' state
+ *
+ * Returns:
+ * uint_fast8_t: the J/K state: 0x0 = SE0, 0x1 = K, 0x2 = J, 0x3 = N/A
+ */
+uint_fast8_t MAX_scanBus( void );
 
 #endif /* INCLUDE_MAX3421E_H_ */
