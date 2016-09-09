@@ -24,7 +24,7 @@ volatile uint_fast8_t enabledEPIRQ;
 volatile uint_fast8_t peripheralConnected;
 volatile uint_fast8_t lastTransferResult;
 
-const uint8_t bulkData[8] = { 1, 2, 3, 4, 5, 6, 7, 8 };
+volatile void (*handlePtr)(uint_fast8_t);
 
 /* PROTOTYPES FOR PRIVATE FUNCTIONS */
 
@@ -63,7 +63,7 @@ void MAX_start( uint_fast8_t startAsMaster ) {
 
     } else {
         /* We're starting as a peripheral */
-        MAX_enableOptions(15, BIT3);
+        //MAX_enableOptions(rUSBCTL, BIT3);
     }
 }
 
@@ -143,12 +143,12 @@ void MAX_clearInterruptStatus( uint_fast8_t flags ) {
 
 void MAX_clearEPInterruptStatus( uint_fast8_t flags ) {
     /* Clear the specified interrupts */
-    MAX_enableOptions(11, flags);
+    MAX_writeRegister(rEPIRQ, flags);
 }
 
 void MAX_enableInterruptsMaster( void ) {
     /* Set IE to 1 */
-    MAX_enableOptions(16, BIT0);
+    MAX_writeRegister(16, BIT0);
 }
 
 void MAX_disableInterruptsMaster( void ) {
@@ -169,7 +169,7 @@ uint_fast8_t MAX_getEnabledInterruptStatus( void ) {
 }
 
 uint_fast8_t MAX_getEPInterruptStatus( void ) {
-    return MAX_readRegister(11);
+    return MAX_readRegister(rEPIRQ);
 }
 
 uint_fast8_t MAX_getEnabledEPInterruptStatus( void ) {
@@ -242,8 +242,9 @@ void MAX_multiReadRegister( uint_fast8_t address, uint_fast8_t * buffer,
 
     /* Transmit the command byte */
     SIMSPI_transmitByte(_getCommandByte(address, DIR_READ));
-    /* Transmit a 0, as we don't actually care about what's written but we do about the response */
-    SIMSPI_transmitBytesReadAll(buffer, (uint_fast8_t *) RXData, length);
+
+    /* Transmit 0s, as we don't actually care about what's written but we do about the response */
+    SIMSPI_readBytes(buffer, length);
 
     /* End the transaction by pulling the CS back to high */
     SET_CS_HIGH
@@ -271,6 +272,11 @@ void MAX_disableOptions( uint_fast8_t address, uint_fast8_t flags ) {
     MAX_writeRegister(address, regVal);
 }
 
+void setStateChangeIRQ(void (*handle)(uint_fast8_t)) {
+    /* Assign the given handler to the local pointer */
+    handlePtr = (volatile void (*)(uint_fast8_t)) handle;
+}
+
 /* PRIVATE FUNCTIONS */
 
 uint_fast8_t _getCommandByte( uint_fast8_t address, uint_fast8_t direction ) {
@@ -292,8 +298,7 @@ void GPIOP2_ISR( void ) {
     USBStatus = MAX_getEnabledInterruptStatus( );
     USBEPStatus = MAX_getEnabledEPInterruptStatus( );
 
-    //printf("Status: 0x%x, 0x%x\n", USBStatus, USBEPStatus);
-
+    /* Peripheral: we got a setup package */
     if ( USBEPStatus & MAX_IRQ_SUDAV ) {
         MAX_writeRegister(rEPIRQ, BIT5);
         MAX_multiReadRegister(4, (uint_fast8_t *) RXData, 8);
@@ -306,35 +311,23 @@ void GPIOP2_ISR( void ) {
             USB_respondStatus((uint_fast8_t *) RXData);
             break;
         }
-        //SysCtlDelay(5000);
-        //regval = MAX_readRegister(19);
-        //printf("Address: 0x%x.\n", regval);
     }
 
     if ( USBEPStatus & MAX_IRQ_IN2BAV ) {
-        MAX_multiWriteRegister(rEP2INFIFO, (uint_fast8_t *) bulkData, 8);
-        MAX_writeRegisterAS(rEP2INBC, 8);
-        MAX_writeRegister(rEPIRQ, MAX_IRQ_IN2BAV);
+        MAX_disableEPInterrupts(MAX_IRQ_IN2BAV);
     }
 
-    if ( !mode && USBStatus & MAX_IRQ_URES ) {
-        MAX_writeRegister(rUSBIRQ, MAX_IRQ_URES);
-        MAX_reset( );
+    if ( !mode && USBStatus & MAX_IRQ_URESDN ) {
+        MAX_writeRegister(rUSBIRQ, MAX_IRQ_URESDN);
 
-        /* Re-enable all interrupts */
+        /* Reconfigure the interrupts after a reset */
         MAX_enableEPInterrupts(MAX_IRQ_SUDAV);
         MAX_clearEPInterruptStatus(MAX_IRQ_SUDAV);
-        MAX_enableInterrupts(MAX_IRQ_URES);
-        MAX_clearInterruptStatus(MAX_IRQ_URES);
-        MAX_enableInterruptsMaster( );
-    }
+        MAX_enableInterrupts(MAX_IRQ_URESDN);
+        MAX_clearInterruptStatus(MAX_IRQ_URESDN);
 
-    if ( mode && USBStatus & MAX_IRQ_RCVDAV ) {
-        uint8_t readlength = MAX_readRegister(rRCVBC);
-        printf("Received %d bytes!\n", readlength);
-        MAX_multiReadRegister(rRCVFIFO, (uint_fast8_t *) RXData, readlength);
-        MAX_writeRegister(rHIRQ, BIT2);
-        printf("First byte: 0x%x\n", RXData[0]);
+        /* Re-enable EP2 */
+        MAX_writeRegister(rEP2INBC, 64);
     }
 
     if ( mode && USBStatus & MAX_IRQ_CONDET ) {
@@ -346,18 +339,41 @@ void GPIOP2_ISR( void ) {
 
             /* Turn on the blue LED */
             MAP_GPIO_setOutputHighOnPin(GPIO_PORT_P2, GPIO_PIN2);
+
             /* Enable the SOF generator */
             MAX_enableOptions(27, BIT3);
             while ( !(MAX_readRegister(rHIRQ) & MAX_IRQ_FRAME ) )
                 ;
 
-            MAX_enableOptions(rHCTL, BIT7);
-            MAX_enableOptions(rHCTL, BIT5);
+            USB_busReset( );
 
-            USB_doEnumeration( );
-            printf("Done with enumeration!\n");
+            SysCtlDelay(4000000);
+
+            if ( USB_doEnumeration( ) )
+                printf("Enumeration Failed...\n");
+            else
+                printf("Done with enumeration!\n");
+
+            SysCtlDelay(4000000);
+
+            /* Make sure the RX buffer is free */
+            MAX_writeRegister(rHIRQ, BIT2);
+
+            uint_fast8_t i, result;
+            uint_fast32_t totalRcvd = 0;
+            /* Make sure the interrupt is cleared */
+            MAX_writeRegister(rHIRQ, BIT2);
             printf("Requesting data...\n");
-            //transmitPacket(xfrIN, 2);
+            printf("(Address: %d)\n", MAX_readRegister(rPERADDR));
+            for ( i = 0; i < 1000; i++ ) {
+                result = requestData((uint_fast8_t *) RXData, 64);
+                if(result != 0) {
+                    printf("Result error: 0x%x (%d)\n", result, i);
+                } else {
+                    totalRcvd += 64;
+                }
+            }
+            printf("Received %d bytes!\n", totalRcvd);
 
         } else {
             peripheralConnected = 0;
@@ -369,4 +385,5 @@ void GPIOP2_ISR( void ) {
         }
         MAX_writeRegister(rHIRQ, BIT5);
     }
+    MAP_GPIO_clearInterruptFlag(USBINT_PORT, USBINT_PIN);
 }

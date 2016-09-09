@@ -10,16 +10,16 @@
 
 /* SPI Master Configuration Parameter */
 const eUSCI_SPI_MasterConfig spiMasterConfig = {
-        EUSCI_B_SPI_CLOCKSOURCE_SMCLK, // SMCLK Clock Source
+EUSCI_B_SPI_CLOCKSOURCE_SMCLK, // SMCLK Clock Source
         24000000, // SMCLK = DCO = 24MHz
-        4000000, // SPICLK = 1MHz
+        10000000, // SPICLK = 4MHz
         EUSCI_B_SPI_MSB_FIRST, // MSB First
         EUSCI_B_SPI_PHASE_DATA_CAPTURED_ONFIRST_CHANGED_ON_NEXT, // Phase
         EUSCI_B_SPI_CLOCKPOLARITY_INACTIVITY_LOW, // Low polarity
         EUSCI_B_SPI_3PIN // 3Wire SPI Mode + GPIO for SS
         };
 
-void SIMSPI_startSPI(void) {
+void SIMSPI_startSPI( void ) {
     /* Initialise the pins */
     MAP_GPIO_setAsOutputPin(CS_PORT, CS_PIN);
     MAP_GPIO_setOutputHighOnPin(CS_PORT, CS_PIN);
@@ -35,7 +35,7 @@ void SIMSPI_startSPI(void) {
     MAP_SPI_enableModule(MODULE);
 }
 
-uint_fast8_t SIMSPI_transmitByte(uint_fast8_t byte) {
+uint_fast8_t SIMSPI_transmitByte( uint_fast8_t byte ) {
     // Make sure the receive interrupt is cleared
     MAP_SPI_clearInterruptFlag(MODULE, EUSCI_B_SPI_RECEIVE_INTERRUPT);
 
@@ -50,28 +50,42 @@ uint_fast8_t SIMSPI_transmitByte(uint_fast8_t byte) {
     return MAP_SPI_receiveData(MODULE);
 }
 
-uint_fast8_t SIMSPI_transmitBytes(uint_fast8_t * bytes, uint_fast8_t length) {
+uint_fast8_t SIMSPI_transmitBytes( uint_fast8_t * bytes, uint_fast8_t length ) {
     uint_fast8_t it;
 
     // Make sure the receive interrupt is cleared
     MAP_SPI_clearInterruptFlag(MODULE, EUSCI_B_SPI_RECEIVE_INTERRUPT);
 
-    for (it = 0; it < length - 1; it++) {
+    for ( it = 0; it < length - 1; it++ ) {
         /* Transmit the current byte */
         SIMSPI_transmitByte(bytes[it]);
     }
     return SIMSPI_transmitByte(bytes[it++]);
 }
 
-uint_fast8_t SIMSPI_transmitBytesReadAll(uint_fast8_t * rxbuffer, uint_fast8_t * bytes, uint_fast8_t length) {
+uint_fast8_t SIMSPI_transmitBytesReadAll( uint_fast8_t * rxbuffer,
+        uint_fast8_t * bytes, uint_fast8_t length ) {
     uint_fast8_t it;
 
     /* Make sure the receive interrupt is cleared */
     MAP_SPI_clearInterruptFlag(MODULE, EUSCI_B_SPI_RECEIVE_INTERRUPT);
 
-    for (it = 0; it < length; it++) {
+    for ( it = 0; it < length; it++ ) {
         /* Transmit the current byte */
         rxbuffer[it] = SIMSPI_transmitByte(bytes[it]);
+    }
+    return 0;
+}
+
+uint_fast8_t SIMSPI_readBytes( uint_fast8_t * rxbuffer, uint_fast8_t length ) {
+    uint_fast8_t it;
+
+    /* Make sure the receive interrupt is cleared */
+    MAP_SPI_clearInterruptFlag(MODULE, EUSCI_B_SPI_RECEIVE_INTERRUPT);
+
+    for ( it = 0; it < length; it++ ) {
+        /* Transmit the current byte */
+        rxbuffer[it] = SIMSPI_transmitByte(0);
     }
     return 0;
 }

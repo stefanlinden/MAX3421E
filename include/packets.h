@@ -15,10 +15,20 @@ uint_fast8_t transmitPacket( uint_fast8_t, uint_fast8_t );
 /**
  * Send the given Setup Packet
  *
- * Parameters:
- * SetupPacket * packet: a reference to the packet to transmit
+ *
+ * \param packet: a reference to the packet to transmit
+ * \return result code
  */
 uint_fast8_t sendControl( ControlPacket * );
+
+/**
+ * Request data and checks whether it is the correct amount
+ *
+ * Parameters:
+ * uint_fast8_t * rxbuffer: a buffer to hold the data
+ * uint_fast8_t nbytes: the amount of bytes
+ */
+uint_fast8_t requestData( uint_fast8_t *, uint_fast8_t);
 
 
 #endif /* INCLUDE_PACKETS_H_ */

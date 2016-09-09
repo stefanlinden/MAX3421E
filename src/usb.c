@@ -40,21 +40,38 @@ uint_fast8_t USB_requestStatus( uint_fast8_t * resultBuffer ) {
     return sendControl(&packet);
 }
 
-void USB_doEnumeration( void ) {
-    /* First do a reset */
+uint_fast8_t USB_doEnumeration( void ) {
     uint16_t tries = 0;
+    MAX_enableOptions(rHCTL, BIT7);
+    MAX_disableOptions(rHCTL, BIT6);
+    MAX_enableOptions(rHCTL, BIT5);
+    MAX_disableOptions(rHCTL, BIT4);
+
     while ( tries < 20 ) {
         if ( tries ) {
             printf("Enumeration failed. Retrying...\n");
             USB_busReset( );
-            SysCtlDelay(20000);
+            SysCtlDelay(4000000);
         }
         tries++;
-        if ( USB_setNewPeripheralAddress(PERIPHERAL_ADDRESS) )
+        MAX_writeRegister(rPERADDR, 0);
+        if ( !USB_setNewPeripheralAddress(PERIPHERAL_ADDRESS) ) {
+            MAX_writeRegister(rPERADDR, PERIPHERAL_ADDRESS);
+            SysCtlDelay(480000);
+        } else {
             continue;
-        //SysCtlDelay(2000);
+        }
         if ( !USB_requestStatus(0) )
             break;
+    }
+    if ( tries < 20 ) {
+        MAX_enableOptions(rHCTL, BIT6);
+        MAX_disableOptions(rHCTL, BIT7);
+        MAX_enableOptions(rHCTL, BIT4);
+        MAX_disableOptions(rHCTL, BIT5);
+        return 0;
+    } else {
+        return 1;
     }
 }
 

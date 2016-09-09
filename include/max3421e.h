@@ -20,7 +20,7 @@
 #define DIR_WRITE 1
 #define DIR_READ  0
 
-#define BUFFER_SIZE 14
+#define BUFFER_SIZE 64
 
 #define MAX_IRQ_BUSEVENT    BIT0
 #define MAX_IRQ_RWU         BIT1

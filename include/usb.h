@@ -97,7 +97,7 @@ uint_fast8_t USB_setNewPeripheralAddress(uint_fast8_t);
  */
 void USB_stallEndpoint( uint_fast8_t );
 
-void USB_doEnumeration( void );
+uint_fast8_t USB_doEnumeration( void );
 
 void USB_busReset( void );
 

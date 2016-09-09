@@ -68,4 +68,6 @@ uint_fast8_t SIMSPI_transmitBytes( uint_fast8_t *, uint_fast8_t );
  */
 uint_fast8_t SIMSPI_transmitBytesReadAll(uint_fast8_t *, uint_fast8_t *, uint_fast8_t);
 
+uint_fast8_t SIMSPI_readBytes( uint_fast8_t *, uint_fast8_t );
+
 #endif /* SIMPLE_SPI_H_ */
